@@ -12,6 +12,7 @@ from common.dataset import dataset
 import common.plot.simple_plot
 from common.plot.simple_plot import SimpleFigure
 from common.plot.scatter import imscatter, ellipse_scatter
+from common.metric.dr_metrics import DRMetric
 from ppca_model import MAP
 
 
@@ -61,11 +62,14 @@ def run_ppca(X_original, X, y, learning_rate, n_iters,
     sum_vars = np.linalg.norm(z2d_scale, axis=1).sum()
     mlflow.log_metric('sum_vars', sum_vars)
 
+    auc_rnx = DRMetric(X, z2d_loc).auc_rnx()
+    mlflow.log_metric('aux_rnx', auc_rnx)
+
     fig = SimpleFigure(**plot_args)
     fig.size((6, 3)).name('losses').plot(lambda: plt.plot(losses))
 
     # if not plot_errors:
-    # scatter_with_images(fig, z2d_loc, z2d_scale, X_original, y, name='z2d')
+    scatter_with_images(fig, z2d_loc, z2d_scale, X_original, y, name='z2d')
     # else:
     scatter_errors(fig, z2d_loc, z2d_scale, y, 'z2d_error')
 
@@ -123,8 +127,8 @@ if __name__ == '__main__':
 
     learning_rates = [0.005, 0.01, 0.015, 0.02, 0.025, 0.005, 0.075, 0.1, 0.15, 0.2]
     n_iters = 350
-    datasets = ['BREAST_CANCER']
+    datasets = ['FASHION200']
     preprocessing_method = 'standardize' # 'no_preprocess'
     nested_run(n_iters, learning_rates, datasets, preprocessing_method)
 
-    # simple_run(dataset_name='QUICKDRAW100', n_iters=250, lr=0.2)
+    # simple_run(dataset_name='FASHION200', n_iters=250, lr=0.2)

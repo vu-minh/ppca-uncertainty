@@ -13,7 +13,7 @@ import common.plot.simple_plot
 from common.plot.simple_plot import SimpleFigure
 from common.plot.scatter import imscatter, ellipse_scatter
 from common.metric.dr_metrics import DRMetric
-from ppca_model import MAP
+from ppca_model import MAP, generate
 
 
 def scatter_with_images(fig, z2d, z2d_scale, original_data, labels_true, name):
@@ -59,7 +59,7 @@ def run_ppca(X_original, X, y, learning_rate, n_iters, plot_args={}):
         5: [0.0, -2.0]
     }
     sigma_fix = 1e-4
-    losses, z2d_loc, z2d_scale = MAP(
+    losses, z2d_loc, z2d_scale, W, sigma = MAP(
         X, learning_rate, n_iters,
         moved_points=moved_points, sigma_fix=sigma_fix)
 
@@ -74,6 +74,11 @@ def run_ppca(X_original, X, y, learning_rate, n_iters, plot_args={}):
 
     scatter_with_images(fig, z2d_loc, z2d_scale, X_original, y, name='z2d')
     scatter_with_errors(fig, z2d_loc, z2d_scale, y, 'z2d_error')
+
+    # test generate
+    z = torch.tensor([[0.0, 0.0]])
+    x = generate(z, W, sigma)
+    print(x.shape)
 
 
 def nested_run(n_iters, learning_rates, datasets, preprocessing_method):

@@ -72,21 +72,34 @@ def train(data, model, guide, learning_rate=1e-3, n_iters=250):
         loss = svi.step(data)
         losses.append(loss)
 
-    for name, value in pyro.get_param_store().items():
-        print(name, value.shape)
+    # for name, value in pyro.get_param_store().items():
+    #    print(name, value.shape)
 
     z2d_loc = pyro.param('qZ_loc').reshape(-1, 2).data.numpy()
     z2d_scale = pyro.param('qZ_scale').reshape(-1, 2).data.numpy()
-    return losses, z2d_loc, z2d_scale
+    W = pyro.param('q_W').data.numpy()
+    sigma = pyro.param('q_sigma').data.numpy()
+    return losses, z2d_loc, z2d_scale, W, sigma
 
 
 def MAP(data, learning_rate=1e-3, n_iters=250, moved_points={}, sigma_fix=1e-3):
     from functools import partial
     ippca_model = partial(ppca_model,
                           M=2, moved_points=moved_points, sigma_fix=sigma_fix)
-    print(ippca_model)
     data = torch.tensor(data, dtype=torch.float)
     auto_guide = define_guide(model=ippca_model, param_guide=AutoDelta,
                               latent_guide=AutoDiagonalNormal)
     return train(data, model=ippca_model, guide=auto_guide,
                  learning_rate=learning_rate, n_iters=n_iters)
+
+
+def generate(z, W, sigma, n_samples=100):
+    # try to generate x from z
+    # repeat z `n_samples` times
+    M, D = W.shape
+    samples = pyro.sample('p_x', Normal(
+        loc=z.repeat(n_samples, 1) @ torch.tensor(W),
+        scale=torch.ones(n_samples, D) * torch.tensor(sigma)
+    ))
+    return samples.mean(dim=0).data.numpy()
+

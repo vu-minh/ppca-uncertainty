@@ -15,7 +15,7 @@ from pyro.infer import SVI, Trace_ELBO, TraceEnum_ELBO, config_enumerate
 from tqdm import tqdm
 
 
-def ppca_model(data, M=2):
+def ppca_model(data, M=2, moved_points={}, sigma_fix=1e-3):
     N, D = data.shape
 
     # sigma: scale of data, (1, D)
@@ -35,10 +35,17 @@ def ppca_model(data, M=2):
 
 
     # Z: (N, M), X: (N, D)
+    z_loc = torch.zeros(N, M)
+    z_scale = torch.ones(N, M)
+
+    if len(moved_points) > 0:
+        for moved_id, (px, py) in moved_points.items():
+            z_loc[moved_id, 0] = px
+            z_loc[moved_id, 1] = py
+            z_scale[moved_id] = sigma_fix
+
     with pyro.plate('data_loop', N):
-        Z = pyro.sample('Z', Normal(
-            torch.zeros(N, M), torch.ones(N, M)
-        ).to_event(1))
+        Z = pyro.sample('Z', Normal(z_loc, z_scale).to_event(1))
 
         pyro.sample('obs', Normal(
             Z @ W, torch.ones(N, D) * sigma
@@ -73,9 +80,13 @@ def train(data, model, guide, learning_rate=1e-3, n_iters=250):
     return losses, z2d_loc, z2d_scale
 
 
-def MAP(data, learning_rate=1e-3, n_iters=250):
+def MAP(data, learning_rate=1e-3, n_iters=250, moved_points={}, sigma_fix=1e-3):
+    from functools import partial
+    ippca_model = partial(ppca_model,
+                          M=2, moved_points=moved_points, sigma_fix=sigma_fix)
+    print(ippca_model)
     data = torch.tensor(data, dtype=torch.float)
-    auto_guide = define_guide(model=ppca_model, param_guide=AutoDelta,
+    auto_guide = define_guide(model=ippca_model, param_guide=AutoDelta,
                               latent_guide=AutoDiagonalNormal)
-    return train(data, model=ppca_model, guide=auto_guide,
+    return train(data, model=ippca_model, guide=auto_guide,
                  learning_rate=learning_rate, n_iters=n_iters)

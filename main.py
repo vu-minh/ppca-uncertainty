@@ -54,7 +54,14 @@ def scatter_with_errors(fig, z2d_loc, z2d_scale, labels_true, name, K=10):
 
 
 def run_ppca(X_original, X, y, learning_rate, n_iters, plot_args={}):
-    losses, z2d_loc, z2d_scale = MAP(X, learning_rate, n_iters)
+    # test run ippca model with moved points
+    moved_points = {
+        5: [0.0, -2.0]
+    }
+    sigma_fix = 1e-4
+    losses, z2d_loc, z2d_scale = MAP(
+        X, learning_rate, n_iters,
+        moved_points=moved_points, sigma_fix=sigma_fix)
 
     sum_vars = np.linalg.norm(z2d_scale, axis=1).sum()
     mlflow.log_metric('sum_vars', sum_vars)

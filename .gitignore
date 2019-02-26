@@ -4,3 +4,4 @@ data
 mlruns/
 plots/
 common
+.ipynb_checkpoints

@@ -78,8 +78,6 @@ def nested_run(n_iters, learning_rates, datasets, preprocessing_method):
 
             X_original, X, y = dataset.load_dataset(dataset_name,
                                                     preprocessing_method)
-            X = torch.tensor(X, dtype=torch.float)
-
             for lr in learning_rates:
                 plot_args = {
                     'prefix': f'{dataset_name}-{lr}-{n_iters}',
@@ -105,7 +103,6 @@ def simple_run(dataset_name, n_iters, lr):
     }
 
     X_original, X, y = dataset.load_dataset(dataset_name)
-    X = torch.tensor(X, dtype=torch.float)
     run_ppca(X_original, X, y, lr, n_iters, plot_args)
 
 

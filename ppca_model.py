@@ -74,6 +74,7 @@ def train(data, model, guide, learning_rate=1e-3, n_iters=250):
 
 
 def MAP(data, learning_rate=1e-3, n_iters=250):
+    data = torch.tensor(data, dtype=torch.float)
     auto_guide = define_guide(model=ppca_model, param_guide=AutoDelta,
                               latent_guide=AutoDiagonalNormal)
     return train(data, model=ppca_model, guide=auto_guide,

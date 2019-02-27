@@ -77,8 +77,8 @@ def train(data, model, guide, learning_rate=1e-3, n_iters=250):
 
     z2d_loc = pyro.param('qZ_loc').reshape(-1, 2).data.numpy()
     z2d_scale = pyro.param('qZ_scale').reshape(-1, 2).data.numpy()
-    W = pyro.param('q_W').data.numpy()
-    sigma = pyro.param('q_sigma').data.numpy()
+    W = [] # pyro.param('q_W').data.numpy()
+    sigma = [] # pyro.param('q_sigma').data.numpy()
     return losses, z2d_loc, z2d_scale, W, sigma
 
 

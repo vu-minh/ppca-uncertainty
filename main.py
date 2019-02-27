@@ -75,11 +75,6 @@ def run_ppca(X_original, X, y, learning_rate, n_iters, plot_args={}):
     scatter_with_images(fig, z2d_loc, z2d_scale, X_original, y, name='z2d')
     scatter_with_errors(fig, z2d_loc, z2d_scale, y, 'z2d_error')
 
-    # test generate
-    z = torch.tensor([[0.0, 0.0]])
-    x = generate(z, W, sigma)
-    print(x.shape)
-
 
 def nested_run(n_iters, learning_rates, datasets, preprocessing_method):
     for dataset_name in datasets:
@@ -131,10 +126,10 @@ if __name__ == '__main__':
 
     mlflow.set_experiment('PPCA_pyro')
 
-#    learning_rates = [0.005, 0.01, 0.02, 0.025, 0.005, 0.075, 0.1, 0.15, 0.2]
-#    n_iters = 350
-#    datasets = ['FASHION200']
-#    preprocessing_method = 'standardize' # 'no_preprocess'
-#    nested_run(n_iters, learning_rates, datasets, preprocessing_method)
+    learning_rates = [0.005, 0.01, 0.02, 0.025, 0.005, 0.075, 0.1, 0.15, 0.2, 0.5]
+    n_iters = 250
+    datasets = ['FASHION200']
+    preprocessing_method = 'standardize' # 'no_preprocess'
+    nested_run(n_iters, learning_rates, datasets, preprocessing_method)
 
-    simple_run(dataset_name='FASHION200', n_iters=250, lr=0.2)
+    # simple_run(dataset_name='FASHION200', n_iters=250, lr=0.2)

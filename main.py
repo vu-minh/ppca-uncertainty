@@ -128,7 +128,7 @@ if __name__ == '__main__':
 
     learning_rates = [0.005, 0.01, 0.02, 0.025, 0.005, 0.075, 0.1, 0.15, 0.2, 0.5]
     n_iters = 250
-    datasets = ['FASHION200']
+    datasets = ['COUNTRY_2014']
     preprocessing_method = 'standardize' # 'no_preprocess'
     nested_run(n_iters, learning_rates, datasets, preprocessing_method)
 

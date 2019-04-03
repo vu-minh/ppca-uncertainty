@@ -26,14 +26,15 @@ dataset.set_data_home("./data")
 writer = SummaryWriter()
 
 
-class DeepPPCAModel(nn.Module):
+class PPCADecoder(nn.Module):
     def __init__(self, data_dim=784, z_dim=2, hidden_dim=300):
-        super(DeepPPCAModel, self).__init__()
+        super(PPCADecoder, self).__init__()
 
         self.fc1 = nn.Linear(z_dim, hidden_dim)
         self.fc21 = nn.Linear(hidden_dim, data_dim)
         self.softplus = nn.Softplus()
         self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
 
     def forward(self, z):
         hidden = self.softplus(self.fc1(z))
@@ -41,29 +42,26 @@ class DeepPPCAModel(nn.Module):
         return loc_img
 
 
-def deep_ppca_model(data, hidden_dim=300, z_dim=2, moved_points={}, sigma_fix=1e-3):
-    N, data_dim = data.shape
+def ppca_model(data, hidden_dim=200, z_dim=2):
+    N, D = data.shape
+    H, M = hidden_dim, z_dim
 
-    deep_ppca = DeepPPCAModel(data_dim=data_dim, z_dim=z_dim, hidden_dim=hidden_dim)
-    pyro.module("deep_ppca_decoder", deep_ppca)
+    decoder_module = PPCADecoder(data_dim=D, z_dim=M, hidden_dim=H)
+    pyro.module("ppca_decoder", decoder_module, update_module_params=True)
 
     sigma = pyro.sample(
-        "sigma",
-        LogNormal(torch.zeros(1, data_dim), torch.ones(1, data_dim)).to_event(1),
+        "sigma", LogNormal(torch.zeros(1, D), torch.ones(1, D)).to_event(1)
     )
 
     with pyro.plate("data_plate", N):
-        Z = pyro.sample(
-            "Z", Normal(torch.zeros(N, z_dim), torch.ones(N, z_dim)).to_event(1)
-        )
+        Z = pyro.sample("Z", Normal(torch.zeros(N, M), torch.ones(N, M)).to_event(1))
 
-        generated_X_mean = deep_ppca.forward(Z)
-        generated_X_scale = torch.ones(N, data_dim) * sigma
+        generated_X_mean = decoder_module.forward(Z)
+        generated_X_scale = torch.ones(N, D) * sigma
 
         obs = pyro.sample(
             "obs", Normal(generated_X_mean, generated_X_scale).to_event(1), obs=data
         )
-        return obs
 
 
 def trainVI(
@@ -73,8 +71,7 @@ def trainVI(
     pyro.set_rng_seed(0)
     pyro.clear_param_store()
 
-    model = partial(deep_ppca_model, hidden_dim=hidden_dim, z_dim=2)
-
+    model = partial(ppca_model, hidden_dim=hidden_dim, z_dim=2)
     guide = AutoGuideList(model)
     guide.add(AutoDiagonalNormal(model=poutine.block(model, expose=["sigma"])))
     guide.add(AutoDiagonalNormal(model=poutine.block(model, expose=["Z"]), prefix="qZ"))

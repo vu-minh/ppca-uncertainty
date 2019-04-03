@@ -33,10 +33,12 @@ class PPCADecoder(nn.Module):
         self.softplus = nn.Softplus()
         self.sigmoid = nn.Sigmoid()
         self.tanh = nn.Tanh()
+        self.dropout = nn.Dropout(p=0.5)
 
     def forward(self, z):
         hidden = self.softplus(self.fc1(z))
-        loc_img = self.sigmoid(self.fc21(hidden))
+        hidden_dropout = self.dropout(hidden)
+        loc_img = self.sigmoid(self.fc21(hidden_dropout))
         return loc_img
 
 
@@ -136,7 +138,11 @@ def compare_with_sklearn(data, labels):
 if __name__ == "__main__":
     dataset.set_data_home("./data")
 
-    ap = argparse.ArgumentParser(description="DeepPPCAModel")
+    help_msg = """
+        Run DeepPPCAModel with custom params:
+        $ python ppca_model2.py -d "DIGITS" -hd 50 -lr 0.0075 -n 2000
+    """
+    ap = argparse.ArgumentParser(description=help_msg)
     ap.add_argument("-d", "--dataset_name", default="")
     ap.add_argument("-x", "--dev", action="store_true")
     ap.add_argument("-lr", "--learning_rate", default=1e-3, type=float)

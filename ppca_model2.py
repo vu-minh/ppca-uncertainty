@@ -18,12 +18,10 @@ from tensorboardX import SummaryWriter
 from matplotlib import pyplot as plt
 from common.dataset import dataset
 from common.plot.scatter import imscatter
+from common.metric.dr_metrics import DRMetric
+import time
 import math
 import argparse
-
-
-dataset.set_data_home("./data")
-writer = SummaryWriter()
 
 
 class PPCADecoder(nn.Module):
@@ -80,7 +78,9 @@ def trainVI(
     svi = SVI(model, guide, optim, loss=Trace_ELBO())
 
     fig_title = f"lr={learning_rate}/hidden-dim={hidden_dim}"
+    metric = DRMetric(X=data, Y=None)
     data = torch.tensor(data, dtype=torch.float)
+
     for n_iter in tqdm(range(n_iters)):
         loss = svi.step(data)
         if n_iter % 10 == 0:
@@ -90,6 +90,9 @@ def trainVI(
             z2d_loc = pyro.param("qZ_loc").reshape(-1, 2).data.numpy()
             fig = get_fig_plot_z2d(z2d_loc, fig_title)
             writer.add_figure("train_vi/z2d", fig, n_iter)
+
+            auc_rnx = metric.update(Y=z2d_loc).auc_rnx()
+            writer.add_scalar("metrics/auc_rnx", auc_rnx, n_iter)
 
     # show named rvs
     print("List params and their size: ")
@@ -104,13 +107,13 @@ def trainVI(
 
 
 def get_fig_plot_z2d(z2d, title, with_imgs=True):
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(16, 8))
     plt.title(title)
 
     axes[0].scatter(z2d[:, 0], z2d[:, 1], c=y, alpha=0.5, cmap="jet")
     if with_imgs:
-        axes[1].scatter(z2d[:, 0], z2d[:, 1])
-        imscatter(axes[1], z2d, X_original, zoom=0.5)
+        axes[1].scatter(z2d[:, 0], z2d[:, 1], s=1)
+        imscatter(axes[1], z2d, X_original, zoom=0.3)
     return fig
 
 
@@ -126,7 +129,13 @@ def create_tensorboard_embedding(data, labels, features=None):
     )
 
 
+def compare_with_sklearn(data, labels):
+    pass
+
+
 if __name__ == "__main__":
+    dataset.set_data_home("./data")
+
     ap = argparse.ArgumentParser(description="DeepPPCAModel")
     ap.add_argument("-d", "--dataset_name", default="")
     ap.add_argument("-x", "--dev", action="store_true")
@@ -134,8 +143,16 @@ if __name__ == "__main__":
     ap.add_argument("-s", "--scale_data", default="unitScale")
     ap.add_argument("-n", "--n_iters", default=1000, type=int)
     ap.add_argument("-hd", "--hidden_dim", default=300, type=int)
-
     args = ap.parse_args()
+
+    time_str = time.strftime("%b%d/%H:%M:%S", time.localtime())
+    log_dir = (
+        f"runs2/{args.dataset_name}/{time_str}_"
+        + f"lr{args.learning_rate}_h{args.hidden_dim}"
+    )
+    print(log_dir)
+
+    writer = SummaryWriter(log_dir=log_dir)
     writer.add_text(f"Params", str(args))
 
     X_original, X, y = dataset.load_dataset(

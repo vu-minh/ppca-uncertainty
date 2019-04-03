@@ -38,7 +38,7 @@ class PPCADecoder(nn.Module):
 
     def forward(self, z):
         hidden = self.softplus(self.fc1(z))
-        loc_img = self.softplus(self.fc21(hidden))
+        loc_img = self.sigmoid(self.fc21(hidden))
         return loc_img
 
 
@@ -103,11 +103,14 @@ def trainVI(
     return z2d_loc, z2d_scale
 
 
-def get_fig_plot_z2d(z2d, title):
-    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-    ax.set_title(title)
-    ax.scatter(z2d[:, 0], z2d[:, 1], alpha=0.5)
-    imscatter(ax, z2d, X_original, zoom=0.5)
+def get_fig_plot_z2d(z2d, title, with_imgs=True):
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    plt.title(title)
+
+    axes[0].scatter(z2d[:, 0], z2d[:, 1], c=y, alpha=0.5, cmap="jet")
+    if with_imgs:
+        axes[1].scatter(z2d[:, 0], z2d[:, 1])
+        imscatter(axes[1], z2d, X_original, zoom=0.5)
     return fig
 
 

@@ -1,5 +1,8 @@
 """Build PPCA model with pyro
 """
+import time
+import math
+import argparse
 
 import torch
 from torch import nn
@@ -15,13 +18,14 @@ from pyro.infer import SVI, Trace_ELBO, TraceEnum_ELBO, config_enumerate
 from tqdm import tqdm
 from functools import partial
 from tensorboardX import SummaryWriter
+
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 from matplotlib import pyplot as plt
+
 from common.dataset import dataset
 from common.plot.scatter import imscatter
 from common.metric.dr_metrics import DRMetric
-import time
-import math
-import argparse
 
 
 class PPCADecoder(nn.Module):
@@ -65,8 +69,19 @@ def ppca_model(data, hidden_dim=200, z_dim=2):
 
 
 def trainVI(
-    data, hidden_dim, learning_rate=1e-03, n_iters=500, trace_embeddings_interval=20
+    data,
+    hidden_dim,
+    learning_rate=1e-03,
+    n_iters=500,
+    trace_embeddings_interval=20,
+    writer=None,
 ):
+    """Train (Deep) PPCA model with VI.
+    Using tensorboardX SummaryWriter to log to tensorboard.
+    Logging the internal result by setting "trace_embeddings_interval"
+    to the expected interval (50, 100, ...).
+    Set it to value larger than "n_iters" to disable interval logging.
+    """
     pyro.enable_validation(True)
     pyro.set_rng_seed(0)
     pyro.clear_param_store()
@@ -85,16 +100,17 @@ def trainVI(
 
     for n_iter in tqdm(range(n_iters)):
         loss = svi.step(data)
-        if n_iter % 10 == 0:
+        if writer and n_iter % 10 == 0:
             writer.add_scalar("train_vi/loss", loss, n_iter)
 
-        if trace_embeddings_interval and n_iter % trace_embeddings_interval == 0:
+        if writer and n_iter % trace_embeddings_interval == 0:
             z2d_loc = pyro.param("qZ_loc").reshape(-1, 2).data.numpy()
-            fig = get_fig_plot_z2d(z2d_loc, fig_title)
-            writer.add_figure("train_vi/z2d", fig, n_iter)
 
             auc_rnx = metric.update(Y=z2d_loc).auc_rnx()
             writer.add_scalar("metrics/auc_rnx", auc_rnx, n_iter)
+
+            fig = get_fig_plot_z2d(z2d_loc, fig_title + f", auc_rnx={auc_rnx:.3f}")
+            writer.add_figure("train_vi/z2d", fig, n_iter)
 
     # show named rvs
     print("List params and their size: ")
@@ -103,8 +119,9 @@ def trainVI(
 
     z2d_loc = pyro.param("qZ_loc").reshape(-1, 2).data.numpy()
     z2d_scale = pyro.param("qZ_scale").reshape(-1, 2).data.numpy()
-    fig = get_fig_plot_z2d(z2d_loc, fig_title)
-    writer.add_figure("train_vi/z2d", fig, n_iters)
+    if writer:
+        fig = get_fig_plot_z2d(z2d_loc, fig_title)
+        writer.add_figure("train_vi/z2d", fig, n_iters)
     return z2d_loc, z2d_scale
 
 
@@ -131,8 +148,18 @@ def create_tensorboard_embedding(data, labels, features=None):
     )
 
 
-def compare_with_sklearn(data, labels):
-    pass
+def run_with_sklearn(data, labels):
+    for model in [PCA, TSNE]:
+        Z = model(n_components=2).fit_transform(data)
+
+        metric = DRMetric(data, Z)
+        auc_rnx = metric.auc_rnx()
+
+        fig = get_fig_plot_z2d(
+            Z, title=f"sklearn/{model.__name__}, auc_rnx={auc_rnx:.3f}", with_imgs=True
+        )
+        fig.savefig(f"./plots/{args.dataset_name}_sklearn_{model.__name__}.png")
+        plt.close(fig)
 
 
 if __name__ == "__main__":
@@ -143,6 +170,7 @@ if __name__ == "__main__":
         $ python ppca_model2.py -d "DIGITS" -hd 50 -lr 0.0075 -n 2000
     """
     ap = argparse.ArgumentParser(description=help_msg)
+    ap.add_argument("-r", "--run_id", default="999")
     ap.add_argument("-d", "--dataset_name", default="")
     ap.add_argument("-x", "--dev", action="store_true")
     ap.add_argument("-lr", "--learning_rate", default=1e-3, type=float)
@@ -153,23 +181,26 @@ if __name__ == "__main__":
 
     time_str = time.strftime("%b%d/%H:%M:%S", time.localtime())
     log_dir = (
-        f"runs2/{args.dataset_name}/{time_str}_"
+        f"runs{args.run_id}/{args.dataset_name}/{time_str}_"
         + f"lr{args.learning_rate}_h{args.hidden_dim}"
     )
     print(log_dir)
 
     writer = SummaryWriter(log_dir=log_dir)
-    writer.add_text(f"Params", str(args))
-
     X_original, X, y = dataset.load_dataset(
         args.dataset_name, preprocessing_method=args.scale_data
     )
+
+    # run_with_sklearn(X, y)
+
+    writer.add_text(f"Params", str(args))
     z2d_loc, z2d_scale = trainVI(
         data=X,
         hidden_dim=args.hidden_dim,
         learning_rate=args.learning_rate,
         n_iters=5 if args.dev else args.n_iters,
         trace_embeddings_interval=100,
+        writer=writer,
     )
 
     # create_tensorboard_embedding(data=X_original, labels=y, features=z2d_loc)

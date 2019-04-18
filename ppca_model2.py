@@ -27,26 +27,35 @@ from common.dataset import dataset
 from common.plot.scatter import imscatter
 from common.metric.dr_metrics import DRMetric
 
+from icommon import generate_noise
+
 
 class PPCADecoder(nn.Module):
     def __init__(self, data_dim=784, z_dim=2, hidden_dim=300):
         super(PPCADecoder, self).__init__()
 
-        self.fc1 = nn.Linear(z_dim, hidden_dim)
-        self.fc21 = nn.Linear(hidden_dim, data_dim)
-        self.softplus = nn.Softplus()
-        self.sigmoid = nn.Sigmoid()
-        self.tanh = nn.Tanh()
-        self.dropout = nn.Dropout(p=0.5)
+        self.hidden_dim = hidden_dim
+        if hidden_dim > 0:
+            self.fc1 = nn.Linear(z_dim, hidden_dim)
+            self.fc21 = nn.Linear(hidden_dim, data_dim)
+            self.softplus = nn.Softplus()
+            self.sigmoid = nn.Sigmoid()
+            self.tanh = nn.Tanh()
+            self.dropout = nn.Dropout(p=0.5)
+        else:
+            self.fc0 = nn.Linear(z_dim, data_dim)
 
     def forward(self, z):
-        hidden = self.softplus(self.fc1(z))
-        hidden_dropout = self.dropout(hidden)
-        loc_img = self.sigmoid(self.fc21(hidden_dropout))
+        if self.hidden_dim > 0:
+            hidden = self.softplus(self.fc1(z))
+            hidden_dropout = self.dropout(hidden)
+            loc_img = self.sigmoid(self.fc21(hidden_dropout))
+        else:
+            loc_img = self.fc0(z)
         return loc_img
 
 
-def ppca_model(data, hidden_dim=200, z_dim=2):
+def ppca_model(data, hidden_dim=200, z_dim=2, moved_points={}, sigma_fix=1e-3):
     N, D = data.shape
     H, M = hidden_dim, z_dim
 
@@ -57,8 +66,17 @@ def ppca_model(data, hidden_dim=200, z_dim=2):
         "sigma", LogNormal(torch.zeros(1, D), torch.ones(1, D)).to_event(1)
     )
 
+    z_loc = torch.zeros(N, M)
+    z_scale = torch.ones(N, M)
+
+    if len(moved_points) > 0:
+        for moved_id, (px, py) in moved_points.items():
+            z_loc[moved_id, 0] = px
+            z_loc[moved_id, 1] = py
+            z_scale[moved_id] = sigma_fix
+
     with pyro.plate("data_plate", N):
-        Z = pyro.sample("Z", Normal(torch.zeros(N, M), torch.ones(N, M)).to_event(1))
+        Z = pyro.sample("Z", Normal(z_loc, z_scale).to_event(1))
 
         generated_X_mean = decoder_module.forward(Z)
         generated_X_scale = torch.ones(N, D) * sigma
@@ -75,6 +93,8 @@ def trainVI(
     n_iters=500,
     trace_embeddings_interval=20,
     writer=None,
+    moved_points={},
+    sigma_fix=1e-3,
 ):
     """Train (Deep) PPCA model with VI.
     Using tensorboardX SummaryWriter to log to tensorboard.
@@ -86,7 +106,13 @@ def trainVI(
     pyro.set_rng_seed(0)
     pyro.clear_param_store()
 
-    model = partial(ppca_model, hidden_dim=hidden_dim, z_dim=2)
+    model = partial(
+        ppca_model,
+        hidden_dim=hidden_dim,
+        z_dim=2,
+        moved_points=moved_points,
+        sigma_fix=sigma_fix,
+    )
     guide = AutoGuideList(model)
     guide.add(AutoDiagonalNormal(model=poutine.block(model, expose=["sigma"])))
     guide.add(AutoDiagonalNormal(model=poutine.block(model, expose=["Z"]), prefix="qZ"))
@@ -176,7 +202,15 @@ if __name__ == "__main__":
     ap.add_argument("-lr", "--learning_rate", default=1e-3, type=float)
     ap.add_argument("-s", "--scale_data", default="unitScale")
     ap.add_argument("-n", "--n_iters", default=1000, type=int)
-    ap.add_argument("-hd", "--hidden_dim", default=300, type=int)
+    ap.add_argument(
+        "-hd",
+        "--hidden_dim",
+        default=0,
+        type=int,
+        help="Number of hidden units, defaults to 0 to simply do Z@W",
+    )
+    ap.add_argument("-ad", "--add_noise", action="store_true")
+
     args = ap.parse_args()
 
     time_str = time.strftime("%b%d/%H:%M:%S", time.localtime())
@@ -190,6 +224,9 @@ if __name__ == "__main__":
     X_original, X, y = dataset.load_dataset(
         args.dataset_name, preprocessing_method=args.scale_data
     )
+    if args.add_noise:
+        X_original = generate_noise("s&p", X_original)
+        X = X_original / 255.0
 
     # run_with_sklearn(X, y)
 
@@ -199,7 +236,7 @@ if __name__ == "__main__":
         hidden_dim=args.hidden_dim,
         learning_rate=args.learning_rate,
         n_iters=5 if args.dev else args.n_iters,
-        trace_embeddings_interval=100,
+        trace_embeddings_interval=200,
         writer=writer,
     )
 
